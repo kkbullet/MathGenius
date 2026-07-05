@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { mockStorage } from './utils/mockStorage';
+import { supabase } from './utils/supabaseClient';
 import GameScreen from './components/GameScreen';
 import ScoreSummary from './components/ScoreSummary';
 import Dashboard from './components/Dashboard';
@@ -39,6 +40,50 @@ export default function App() {
     }
   }, []);
 
+  // Set up real-time sync listeners for scoreboard and friend alerts
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Subscribe to schema changes on the friendships and profiles tables
+    const channel = supabase
+      .channel('mma-realtime-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'friendships'
+        },
+        async (payload) => {
+          const friendRow = payload.new.id ? payload.new : payload.old;
+          // If the connection change belongs to us, reload the dashboard
+          if (
+            friendRow.sender_id === currentUser.id ||
+            friendRow.recipient_id === currentUser.id
+          ) {
+            await triggerReload();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles'
+        },
+        async () => {
+          // If any profile updates their high score, refresh our score lists
+          await triggerReload();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser]);
+
   // Process any pending invite link once the user is authenticated
   useEffect(() => {
     if (currentUser) {
@@ -47,7 +92,7 @@ export default function App() {
         if (pendingInviteId) {
           const res = await mockStorage.processInviteLink(pendingInviteId);
           if (res.success) {
-            alert(`Connected with inviter!`);
+            alert(`Connected/Sent request to inviter!`);
           }
           localStorage.removeItem('mma_pending_invite_id');
           // Clear invite query param from URL bar
