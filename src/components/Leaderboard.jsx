@@ -7,8 +7,15 @@ export default function Leaderboard({ currentUser, updateTrigger }) {
 
   // Fetch scores when component mounts, active tab changes, or user actions trigger updates
   useEffect(() => {
-    const list = mockStorage.getLeaderboard(friendsOnly);
-    setScores(list);
+    async function fetchScores() {
+      try {
+        const list = await mockStorage.getLeaderboard(friendsOnly);
+        setScores(list);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    fetchScores();
   }, [friendsOnly, currentUser, updateTrigger]);
 
   return (

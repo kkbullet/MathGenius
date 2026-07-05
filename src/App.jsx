@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { mockStorage } from './utils/mockStorage';
+import { supabase } from './utils/supabaseClient';
 import GameScreen from './components/GameScreen';
 import ScoreSummary from './components/ScoreSummary';
 import Dashboard from './components/Dashboard';
@@ -20,11 +21,26 @@ export default function App() {
   // Used to trigger list refetches in other components
   const [updateTrigger, setUpdateTrigger] = useState(0);
 
-  // Initialize storage and process invite link if present
+  // Initialize storage and subscribe to auth state changes
   useEffect(() => {
     mockStorage.init();
-    const user = mockStorage.getCurrentUser();
-    setCurrentUser(user);
+
+    // Check current session on mount
+    async function checkUser() {
+      const user = await mockStorage.getCurrentUser();
+      setCurrentUser(user);
+    }
+    checkUser();
+
+    // Subscribe to Supabase auth state changes (crucial for email link sign-in)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        const user = await mockStorage.getCurrentUser();
+        setCurrentUser(user);
+      } else {
+        setCurrentUser(null);
+      }
+    });
 
     // Parse URL query params for invitations: ?invite=USER_ID
     const params = new URLSearchParams(window.location.search);
@@ -32,48 +48,61 @@ export default function App() {
     if (inviteId) {
       localStorage.setItem('mma_pending_invite_id', inviteId);
     }
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Process any pending invite link once the user is authenticated
   useEffect(() => {
     if (currentUser) {
-      const pendingInviteId = localStorage.getItem('mma_pending_invite_id');
-      if (pendingInviteId) {
-        const res = mockStorage.processInviteLink(pendingInviteId);
-        if (res.success) {
-          alert(`Friend request sent/connected with inviter!`);
+      async function processInvite() {
+        const pendingInviteId = localStorage.getItem('mma_pending_invite_id');
+        if (pendingInviteId) {
+          const res = await mockStorage.processInviteLink(pendingInviteId);
+          if (res.success) {
+            alert(`Friend request sent/connected with inviter!`);
+          }
+          localStorage.removeItem('mma_pending_invite_id');
+          // Clear invite query param from URL bar
+          const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+          window.history.pushState({ path: newUrl }, '', newUrl);
+          await triggerReload();
         }
-        localStorage.removeItem('mma_pending_invite_id');
-        // Clear invite query param from URL bar
-        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-        window.history.pushState({ path: newUrl }, '', newUrl);
-        triggerReload();
       }
+      processInvite();
     }
   }, [currentUser]);
 
-  const triggerReload = () => {
-    setCurrentUser(mockStorage.getCurrentUser());
+  const triggerReload = async () => {
+    const user = await mockStorage.getCurrentUser();
+    setCurrentUser(user);
     setUpdateTrigger(prev => prev + 1);
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     if (!emailInput.trim()) return;
 
+    setLoginFeedback('SENDING MAGIC LINK...');
+
     try {
-      const user = mockStorage.login(emailInput, usernameInput);
-      setCurrentUser(user);
-      setLoginFeedback('');
-      setEmailInput('');
-      setUsernameInput('');
+      const { error } = await mockStorage.login(emailInput, usernameInput);
+      if (error) {
+        setLoginFeedback(error.message.toUpperCase());
+      } else {
+        setLoginFeedback('CHECK YOUR EMAIL FOR THE LOGIN LINK!');
+        setEmailInput('');
+        setUsernameInput('');
+      }
     } catch (err) {
       setLoginFeedback('LOGIN ERROR. TRY AGAIN.');
     }
   };
 
-  const handleLogout = () => {
-    mockStorage.logout();
+  const handleLogout = async () => {
+    await mockStorage.logout();
     setCurrentUser(null);
     setGameState('dashboard');
   };
@@ -84,11 +113,11 @@ export default function App() {
     setGameState('playing');
   };
 
-  const handleGameEnd = (finalScore) => {
+  const handleGameEnd = async (finalScore) => {
     setLastRoundScore(finalScore);
     // Save to database
-    mockStorage.saveScore(finalScore);
-    triggerReload();
+    await mockStorage.saveScore(finalScore);
+    await triggerReload();
     setGameState('gameover');
   };
 
@@ -137,13 +166,18 @@ export default function App() {
             </div>
 
             {loginFeedback && (
-              <div style={{ color: 'var(--color-red)', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+              <div style={{ 
+                color: loginFeedback.includes('CHECK') ? 'var(--color-green)' : 'var(--color-red)', 
+                fontSize: '0.75rem', 
+                textTransform: 'uppercase',
+                textShadow: loginFeedback.includes('CHECK') ? '0 0 5px rgba(57,255,20,0.4)' : 'none'
+              }}>
                 {loginFeedback}
               </div>
             )}
 
             <button type="submit" className="arcade-btn cyan" style={{ marginTop: '10px' }}>
-              START GAME (SIGN IN)
+              SEND LOGIN LINK
             </button>
           </form>
         </div>

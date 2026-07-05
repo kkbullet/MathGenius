@@ -1,231 +1,286 @@
 /**
- * Mock Database Layer using LocalStorage.
- * Simulates authentication, score saving, invitations, and leaderboards.
+ * Database Layer connecting directly to your live Supabase cloud instance.
+ * Preserves the exact method signatures so the rest of the application remains unchanged,
+ * but operates asynchronously using promises.
  */
+import { supabase } from './supabaseClient';
 
-const STORAGE_KEYS = {
-  PROFILES: 'mma_profiles',
-  ACTIVE_USER_ID: 'mma_active_user_id',
-  INVITATIONS: 'mma_invitations'
-};
-
-// Seed initial mock profiles if local storage is empty
-const DEFAULT_PROFILES = [
-  { id: 'dev-1', email: 'arcade_champ@retro.com', username: 'ArcadeChamp', highScore: 32 },
-  { id: 'dev-2', email: 'pixel_wizard@retro.com', username: 'PixelWizard', highScore: 24 },
-  { id: 'dev-3', email: 'math_geek@retro.com', username: 'MathGeek', highScore: 18 },
-  { id: 'dev-4', email: 'speed_runner@retro.com', username: 'SpeedRunner', highScore: 12 }
-];
-
-const DEFAULT_INVITATIONS = [
-  { id: 'inv-1', senderId: 'dev-2', recipientEmail: 'arcade_champ@retro.com', status: 'accepted' }, // Friends
-  { id: 'inv-2', senderId: 'dev-3', recipientEmail: 'arcade_champ@retro.com', status: 'accepted' }, // Friends
-  { id: 'inv-3', senderId: 'dev-4', recipientEmail: 'arcade_champ@retro.com', status: 'pending' }   // Inbound pending
-];
-
-function getStoredData(key, fallback) {
-  const data = localStorage.getItem(key);
-  if (!data) {
-    localStorage.setItem(key, JSON.stringify(fallback));
-    return fallback;
-  }
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return fallback;
-  }
+function mapProfile(dbProfile) {
+  if (!dbProfile) return null;
+  return {
+    id: dbProfile.id,
+    username: dbProfile.username,
+    email: dbProfile.email || '', // Email is retrieved from secure auth session where possible
+    highScore: dbProfile.high_score,
+    updatedAt: dbProfile.updated_at
+  };
 }
 
-function saveStoredData(key, data) {
-  localStorage.setItem(key, JSON.stringify(data));
-}
-
-// Exported APIs
 export const mockStorage = {
   init() {
-    getStoredData(STORAGE_KEYS.PROFILES, DEFAULT_PROFILES);
-    getStoredData(STORAGE_KEYS.INVITATIONS, DEFAULT_INVITATIONS);
+    // Supabase client is initialized on import in supabaseClient.js.
+    console.log("Supabase service initialized.");
   },
 
-  getCurrentUser() {
-    const userId = localStorage.getItem(STORAGE_KEYS.ACTIVE_USER_ID);
-    if (!userId) return null;
-    const profiles = getStoredData(STORAGE_KEYS.PROFILES, DEFAULT_PROFILES);
-    return profiles.find(p => p.id === userId) || null;
+  async getCurrentUser() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return null;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single();
+
+    if (!profile) return null;
+
+    return {
+      ...mapProfile(profile),
+      email: session.user.email // Retrieve email securely from session
+    };
   },
 
-  getAllProfiles() {
-    return getStoredData(STORAGE_KEYS.PROFILES, DEFAULT_PROFILES);
+  async getAllProfiles() {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('high_score', { ascending: false });
+
+    return (data || []).map(mapProfile);
   },
 
-  login(email, usernameInput) {
+  async login(email, usernameInput) {
     const trimmedEmail = email.trim().toLowerCase();
-    const profiles = getStoredData(STORAGE_KEYS.PROFILES, DEFAULT_PROFILES);
-    
-    let user = profiles.find(p => p.email === trimmedEmail);
-    
-    if (!user) {
-      // Create new profile
-      const defaultUsername = trimmedEmail.split('@')[0];
-      const username = usernameInput ? usernameInput.trim() : defaultUsername;
-      user = {
-        id: 'user_' + Date.now(),
-        email: trimmedEmail,
-        username: username,
-        highScore: 0
-      };
-      profiles.push(user);
-      saveStoredData(STORAGE_KEYS.PROFILES, profiles);
-    }
-    
-    localStorage.setItem(STORAGE_KEYS.ACTIVE_USER_ID, user.id);
-    return user;
+    const redirectTo = window.location.origin + window.location.pathname;
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: trimmedEmail,
+      options: {
+        emailRedirectTo: redirectTo,
+        data: {
+          username: usernameInput ? usernameInput.trim() : trimmedEmail.split('@')[0]
+        }
+      }
+    });
+
+    return { error };
   },
 
-  logout() {
-    localStorage.removeItem(STORAGE_KEYS.ACTIVE_USER_ID);
+  async logout() {
+    await supabase.auth.signOut();
   },
 
-  saveScore(score) {
-    const user = this.getCurrentUser();
+  async saveScore(score) {
+    const user = await this.getCurrentUser();
     if (!user) return null;
 
     if (score > user.highScore) {
-      const profiles = getStoredData(STORAGE_KEYS.PROFILES, DEFAULT_PROFILES);
-      const userIndex = profiles.findIndex(p => p.id === user.id);
-      if (userIndex !== -1) {
-        profiles[userIndex].highScore = score;
-        saveStoredData(STORAGE_KEYS.PROFILES, profiles);
-        return { updated: true, newHighScore: score };
-      }
+      const { error } = await supabase
+        .from('profiles')
+        .update({ high_score: score })
+        .eq('id', user.id);
+
+      return { updated: !error, newHighScore: error ? user.highScore : score };
     }
     return { updated: false, newHighScore: user.highScore };
   },
 
-  getInvitations() {
-    return getStoredData(STORAGE_KEYS.INVITATIONS, DEFAULT_INVITATIONS);
-  },
-
-  getFriends() {
-    const user = this.getCurrentUser();
+  async getFriends() {
+    const user = await this.getCurrentUser();
     if (!user) return [];
 
-    const invites = this.getInvitations();
-    const profiles = this.getAllProfiles();
+    // Query friendships where status is accepted
+    const { data: friendships } = await supabase
+      .from('friendships')
+      .select('sender_id, recipient_id')
+      .eq('status', 'accepted')
+      .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`);
 
-    // Friendships are invitations with status === 'accepted'
-    // where either the sender is the user, or the recipient is the user
-    return invites
-      .filter(inv => inv.status === 'accepted' && (inv.senderId === user.id || inv.recipientEmail.toLowerCase() === user.email.toLowerCase()))
-      .map(inv => {
-        const friendId = inv.senderId === user.id 
-          ? profiles.find(p => p.email.toLowerCase() === inv.recipientEmail.toLowerCase())?.id
-          : inv.senderId;
-        return profiles.find(p => p.id === friendId);
-      })
-      .filter(p => p !== undefined && p.id !== user.id);
+    if (!friendships || friendships.length === 0) return [];
+
+    // Extract friend IDs
+    const friendIds = friendships.map(f => f.sender_id === user.id ? f.recipient_id : f.sender_id);
+
+    // Fetch friend profiles
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', friendIds);
+
+    return (profiles || []).map(mapProfile).filter(Boolean);
   },
 
-  getPendingInvitations() {
-    const user = this.getCurrentUser();
+  async getPendingInvitations() {
+    const user = await this.getCurrentUser();
     if (!user) return { inbound: [], outbound: [] };
 
-    const invites = this.getInvitations();
-    const profiles = this.getAllProfiles();
+    // Fetch inbound pending invites
+    const { data: inboundInvites } = await supabase
+      .from('friendships')
+      .select('id, sender_id, created_at')
+      .eq('recipient_id', user.id)
+      .eq('status', 'pending');
 
-    const inbound = invites
-      .filter(inv => inv.status === 'pending' && inv.recipientEmail.toLowerCase() === user.email.toLowerCase())
-      .map(inv => {
-        const sender = profiles.find(p => p.id === inv.senderId);
-        return { ...inv, senderName: sender ? sender.username : 'Unknown Player', senderEmail: sender ? sender.email : '' };
+    let inbound = [];
+    if (inboundInvites && inboundInvites.length > 0) {
+      const senderIds = inboundInvites.map(i => i.sender_id);
+      
+      const { data: senderProfiles } = await supabase
+        .from('profiles')
+        .select('id, username')
+        .in('id', senderIds);
+
+      inbound = inboundInvites.map(inv => {
+        const sender = (senderProfiles || []).find(p => p.id === inv.sender_id);
+        return {
+          id: inv.id,
+          senderName: sender ? sender.username : 'Unknown Player',
+          senderEmail: 'Pending Invitation', // Keep email private (PII protection)
+          senderId: inv.sender_id
+        };
       });
+    }
 
-    const outbound = invites
-      .filter(inv => inv.status === 'pending' && inv.senderId === user.id);
+    // Fetch outbound pending invites
+    const { data: outboundInvites } = await supabase
+      .from('friendships')
+      .select('id, recipient_id, created_at')
+      .eq('sender_id', user.id)
+      .eq('status', 'pending');
+
+    const outbound = (outboundInvites || []).map(inv => ({
+      id: inv.id,
+      recipientId: inv.recipient_id,
+      status: 'pending'
+    }));
 
     return { inbound, outbound };
   },
 
-  sendInviteByEmail(recipientEmail) {
-    const user = this.getCurrentUser();
+  async sendInviteByEmail(recipientEmail) {
+    const user = await this.getCurrentUser();
     if (!user) return { success: false, message: 'Please sign in first' };
 
     const email = recipientEmail.trim().toLowerCase();
-    if (email === user.email.toLowerCase()) {
+    
+    // Resolve email to profile ID via secure RPC function
+    const { data, error: rpcError } = await supabase
+      .rpc('find_profile_by_email', { search_email: email });
+
+    if (rpcError || !data || data.length === 0) {
+      return { success: false, message: 'Player email not found or registered' };
+    }
+
+    const recipientId = data[0].id;
+    if (recipientId === user.id) {
       return { success: false, message: 'You cannot invite yourself' };
     }
 
-    const invites = this.getInvitations();
-    
-    // Check if invitation already exists
-    const existing = invites.find(inv => 
-      (inv.senderId === user.id && inv.recipientEmail.toLowerCase() === email) ||
-      (inv.senderId === this.getAllProfiles().find(p => p.email.toLowerCase() === email)?.id && inv.recipientEmail.toLowerCase() === user.email.toLowerCase())
-    );
+    // Check if connection already exists
+    const { data: existing } = await supabase
+      .from('friendships')
+      .select('*')
+      .or(`and(sender_id.eq.${user.id},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${user.id})`);
 
-    if (existing) {
-      if (existing.status === 'accepted') {
+    if (existing && existing.length > 0) {
+      if (existing[0].status === 'accepted') {
         return { success: false, message: 'Already friends' };
       }
       return { success: false, message: 'Friend request is already pending' };
     }
 
-    // Create new invite
-    const newInvite = {
-      id: 'inv_' + Date.now(),
-      senderId: user.id,
-      recipientEmail: email,
-      status: 'pending'
-    };
+    // Send the friendship invite
+    const { error: insertError } = await supabase
+      .from('friendships')
+      .insert({
+        sender_id: user.id,
+        recipient_id: recipientId,
+        status: 'pending'
+      });
 
-    invites.push(newInvite);
-    saveStoredData(STORAGE_KEYS.INVITATIONS, invites);
+    if (insertError) {
+      return { success: false, message: 'Failed to send invite' };
+    }
 
-    // If the recipient does not exist yet, we still send the invite.
-    // When they sign up later with this email, the pending invite will show up.
     return { success: true, message: 'Friend invitation sent successfully!' };
   },
 
-  acceptInvite(inviteId) {
-    const invites = this.getInvitations();
-    const index = invites.findIndex(inv => inv.id === inviteId);
-    if (index !== -1) {
-      invites[index].status = 'accepted';
-      saveStoredData(STORAGE_KEYS.INVITATIONS, invites);
-      return true;
-    }
-    return false;
+  async acceptInvite(inviteId) {
+    const { error } = await supabase
+      .from('friendships')
+      .update({ status: 'accepted' })
+      .eq('id', inviteId);
+
+    return !error;
   },
 
-  rejectInvite(inviteId) {
-    const invites = this.getInvitations();
-    const filtered = invites.filter(inv => inv.id !== inviteId);
-    saveStoredData(STORAGE_KEYS.INVITATIONS, filtered);
-    return true;
+  async rejectInvite(inviteId) {
+    const { error } = await supabase
+      .from('friendships')
+      .delete()
+      .eq('id', inviteId);
+
+    return !error;
   },
 
-  getLeaderboard(friendsOnly = false) {
-    const user = this.getCurrentUser();
-    const profiles = this.getAllProfiles();
+  async getLeaderboard(friendsOnly = false) {
+    const user = await this.getCurrentUser();
 
     if (friendsOnly && user) {
-      const friends = this.getFriends();
+      const friends = await this.getFriends();
       const list = [user, ...friends];
       return list.sort((a, b) => b.highScore - a.highScore);
     }
 
-    return [...profiles].sort((a, b) => b.highScore - a.highScore);
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('high_score', { ascending: false })
+      .limit(50);
+
+    return (profiles || []).map(mapProfile);
   },
 
-  processInviteLink(inviterId) {
-    const user = this.getCurrentUser();
+  async processInviteLink(inviterId) {
+    const user = await this.getCurrentUser();
     if (!user) return { success: false, message: 'Please sign in to connect' };
     if (user.id === inviterId) return { success: false, message: 'You cannot invite yourself' };
 
-    const profiles = this.getAllProfiles();
-    const inviter = profiles.find(p => p.id === inviterId);
+    const { data: inviter } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', inviterId)
+      .single();
+
     if (!inviter) return { success: false, message: 'Inviter profile not found' };
 
-    return this.sendInviteByEmail(inviter.email);
+    const { data: existing } = await supabase
+      .from('friendships')
+      .select('*')
+      .or(`and(sender_id.eq.${user.id},recipient_id.eq.${inviterId}),and(sender_id.eq.${inviterId},recipient_id.eq.${user.id})`);
+
+    if (existing && existing.length > 0) {
+      if (existing[0].status === 'accepted') {
+        return { success: false, message: 'Already friends' };
+      }
+      
+      // Auto-accept if they click an invite link from someone who already sent them an invite!
+      if (existing[0].recipient_id === user.id) {
+        await this.acceptInvite(existing[0].id);
+        return { success: true, message: 'Connected with friend!' };
+      }
+      return { success: false, message: 'Friend request is already pending' };
+    }
+
+    const { error } = await supabase
+      .from('friendships')
+      .insert({
+        sender_id: user.id,
+        recipient_id: inviterId,
+        status: 'pending'
+      });
+
+    if (error) return { success: false, message: 'Failed to connect' };
+    return { success: true, message: 'Friend request sent!' };
   }
 };

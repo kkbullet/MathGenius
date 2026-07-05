@@ -11,23 +11,33 @@ export default function InvitePanel({ currentUser, onActionCompleted }) {
     fetchPending();
   }, [currentUser]);
 
-  const fetchPending = () => {
+  const fetchPending = async () => {
     if (!currentUser) return;
-    const { inbound } = mockStorage.getPendingInvitations();
-    setPendingInvites(inbound);
+    try {
+      const { inbound } = await mockStorage.getPendingInvitations();
+      setPendingInvites(inbound);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const handleSendInvite = (e) => {
+  const handleSendInvite = async (e) => {
     e.preventDefault();
     if (!emailInput.trim()) return;
 
-    const res = mockStorage.sendInviteByEmail(emailInput);
-    if (res.success) {
-      setFeedback({ text: res.message, type: 'success' });
-      setEmailInput('');
-      onActionCompleted();
-    } else {
-      setFeedback({ text: res.message, type: 'error' });
+    setFeedback({ text: 'Checking player...', type: '' });
+
+    try {
+      const res = await mockStorage.sendInviteByEmail(emailInput);
+      if (res.success) {
+        setFeedback({ text: res.message, type: 'success' });
+        setEmailInput('');
+        onActionCompleted();
+      } else {
+        setFeedback({ text: res.message, type: 'error' });
+      }
+    } catch (err) {
+      setFeedback({ text: 'Error sending invite', type: 'error' });
     }
 
     setTimeout(() => setFeedback({ text: '', type: '' }), 4000);
@@ -42,19 +52,27 @@ export default function InvitePanel({ currentUser, onActionCompleted }) {
     });
   };
 
-  const handleAccept = (inviteId) => {
-    const success = mockStorage.acceptInvite(inviteId);
-    if (success) {
-      fetchPending();
-      onActionCompleted();
+  const handleAccept = async (inviteId) => {
+    try {
+      const success = await mockStorage.acceptInvite(inviteId);
+      if (success) {
+        await fetchPending();
+        onActionCompleted();
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
-  const handleReject = (inviteId) => {
-    const success = mockStorage.rejectInvite(inviteId);
-    if (success) {
-      fetchPending();
-      onActionCompleted();
+  const handleReject = async (inviteId) => {
+    try {
+      const success = await mockStorage.rejectInvite(inviteId);
+      if (success) {
+        await fetchPending();
+        onActionCompleted();
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -116,7 +134,7 @@ export default function InvitePanel({ currentUser, onActionCompleted }) {
           <div style={{ 
             fontSize: '0.75rem', 
             marginTop: '4px', 
-            color: feedback.type === 'success' ? 'var(--color-green)' : 'var(--color-red)',
+            color: feedback.type === 'success' ? 'var(--color-green)' : (feedback.type === 'error' ? 'var(--color-red)' : 'var(--color-yellow)'),
             textShadow: feedback.type === 'success' ? '0 0 4px rgba(57,255,20,0.3)' : 'none'
           }}>
             {feedback.text.toUpperCase()}
