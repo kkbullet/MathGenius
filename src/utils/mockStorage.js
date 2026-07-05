@@ -1,7 +1,7 @@
 /**
- * Database Layer connecting directly to your live Supabase cloud instance.
- * Preserves the exact method signatures so the rest of the application remains unchanged,
- * but operates asynchronously using promises.
+ * Decoupled Database Layer connecting to public Supabase tables directly.
+ * Handles frictionless, email-based, passwordless sign-ins on the client
+ * without triggering Magic Link emails or OTP confirmation.
  */
 import { supabase } from './supabaseClient';
 
@@ -10,7 +10,7 @@ function mapProfile(dbProfile) {
   return {
     id: dbProfile.id,
     username: dbProfile.username,
-    email: dbProfile.email || '', // Email is retrieved from secure auth session where possible
+    email: dbProfile.email || '',
     highScore: dbProfile.high_score,
     updatedAt: dbProfile.updated_at
   };
@@ -18,26 +18,26 @@ function mapProfile(dbProfile) {
 
 export const mockStorage = {
   init() {
-    // Supabase client is initialized on import in supabaseClient.js.
-    console.log("Supabase service initialized.");
+    console.log("Frictionless database service initialized.");
   },
 
   async getCurrentUser() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return null;
+    const userId = localStorage.getItem('mma_active_user_id');
+    if (!userId) return null;
 
-    const { data: profile } = await supabase
+    const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', session.user.id)
+      .eq('id', userId)
       .single();
 
-    if (!profile) return null;
+    if (error || !profile) {
+      // If profile not found (e.g., db reset), wipe active session
+      localStorage.removeItem('mma_active_user_id');
+      return null;
+    }
 
-    return {
-      ...mapProfile(profile),
-      email: session.user.email // Retrieve email securely from session
-    };
+    return mapProfile(profile);
   },
 
   async getAllProfiles() {
@@ -51,23 +51,84 @@ export const mockStorage = {
 
   async login(email, usernameInput) {
     const trimmedEmail = email.trim().toLowerCase();
-    const redirectTo = window.location.origin + window.location.pathname;
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email: trimmedEmail,
-      options: {
-        emailRedirectTo: redirectTo,
-        data: {
-          username: usernameInput ? usernameInput.trim() : trimmedEmail.split('@')[0]
-        }
-      }
-    });
+    // 1. Check if user exists in the public profiles table
+    const { data: existing, error: queryError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', trimmedEmail);
 
-    return { error };
+    if (queryError) {
+      return { error: queryError };
+    }
+
+    if (existing && existing.length > 0) {
+      const user = existing[0];
+      localStorage.setItem('mma_active_user_id', user.id);
+      return { user: mapProfile(user) };
+    }
+
+    // 2. If user doesn't exist, validate the chosen username (case-insensitive check)
+    const defaultUsername = trimmedEmail.split('@')[0];
+    const username = usernameInput ? usernameInput.trim() : defaultUsername;
+
+    const { data: duplicateUsername, error: usernameQueryError } = await supabase
+      .from('profiles')
+      .select('id')
+      .ilike('username', username); // Case-insensitive lookup
+
+    if (usernameQueryError) {
+      return { error: usernameQueryError };
+    }
+
+    if (duplicateUsername && duplicateUsername.length > 0) {
+      return { 
+        error: { 
+          message: 'Username is already taken by another player. Please choose a different name!' 
+        } 
+      };
+    }
+
+    // 3. Create a new profile instantly
+    const { data: inserted, error: insertError } = await supabase
+      .from('profiles')
+      .insert({
+        email: trimmedEmail,
+        username: username,
+        high_score: 0
+      })
+      .select();
+
+    if (insertError || !inserted || inserted.length === 0) {
+      return { error: insertError || new Error("Failed to create profile") };
+    }
+
+    const newUser = inserted[0];
+    localStorage.setItem('mma_active_user_id', newUser.id);
+    return { user: mapProfile(newUser) };
   },
 
   async logout() {
-    await supabase.auth.signOut();
+    localStorage.removeItem('mma_active_user_id');
+  },
+
+  async deleteProfile() {
+    const user = await this.getCurrentUser();
+    if (!user) return false;
+
+    // Delete row in profiles table. Foreign keys cascade-delete friendships.
+    const { error } = await supabase
+      .from('profiles')
+      .delete()
+      .eq('id', user.id);
+
+    if (error) {
+      console.error("Error deleting profile:", error);
+      return false;
+    }
+
+    localStorage.removeItem('mma_active_user_id');
+    return true;
   },
 
   async saveScore(score) {
@@ -127,7 +188,7 @@ export const mockStorage = {
       
       const { data: senderProfiles } = await supabase
         .from('profiles')
-        .select('id, username')
+        .select('id, username, email')
         .in('id', senderIds);
 
       inbound = inboundInvites.map(inv => {
@@ -135,7 +196,7 @@ export const mockStorage = {
         return {
           id: inv.id,
           senderName: sender ? sender.username : 'Unknown Player',
-          senderEmail: 'Pending Invitation', // Keep email private (PII protection)
+          senderEmail: sender ? sender.email : 'Pending Request',
           senderId: inv.sender_id
         };
       });
@@ -162,25 +223,27 @@ export const mockStorage = {
     if (!user) return { success: false, message: 'Please sign in first' };
 
     const email = recipientEmail.trim().toLowerCase();
-    
-    // Resolve email to profile ID via secure RPC function
-    const { data, error: rpcError } = await supabase
-      .rpc('find_profile_by_email', { search_email: email });
-
-    if (rpcError || !data || data.length === 0) {
-      return { success: false, message: 'Player email not found or registered' };
-    }
-
-    const recipientId = data[0].id;
-    if (recipientId === user.id) {
+    if (email === user.email.toLowerCase()) {
       return { success: false, message: 'You cannot invite yourself' };
     }
+    
+    // Resolve email directly in public profiles table
+    const { data: profiles, error: queryError } = await supabase
+      .from('profiles')
+      .select('id, username')
+      .eq('email', email);
+
+    if (queryError || !profiles || profiles.length === 0) {
+      return { success: false, message: 'Player email not registered yet' };
+    }
+
+    const recipient = profiles[0];
 
     // Check if connection already exists
     const { data: existing } = await supabase
       .from('friendships')
       .select('*')
-      .or(`and(sender_id.eq.${user.id},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${user.id})`);
+      .or(`and(sender_id.eq.${user.id},recipient_id.eq.${recipient.id}),and(sender_id.eq.${recipient.id},recipient_id.eq.${user.id})`);
 
     if (existing && existing.length > 0) {
       if (existing[0].status === 'accepted') {
@@ -194,7 +257,7 @@ export const mockStorage = {
       .from('friendships')
       .insert({
         sender_id: user.id,
-        recipient_id: recipientId,
+        recipient_id: recipient.id,
         status: 'pending'
       });
 

@@ -22,6 +22,25 @@ export default function Dashboard({ currentUser, onLogout, onActionCompleted }) 
     }
   };
 
+  const handleDeleteProfile = async () => {
+    const confirmed = window.confirm(
+      "WARNING: Are you sure you want to delete your profile? This will wipe your email, username, high score, and all friend connections permanently!"
+    );
+    
+    if (confirmed) {
+      try {
+        const success = await mockStorage.deleteProfile();
+        if (success) {
+          onLogout(); // Clears app state and returns user to login
+        } else {
+          alert("Error: Failed to delete profile. Please try again.");
+        }
+      } catch (err) {
+        console.error("Delete profile crash:", err);
+      }
+    }
+  };
+
   if (!currentUser) return null;
 
   return (
@@ -52,12 +71,29 @@ export default function Dashboard({ currentUser, onLogout, onActionCompleted }) 
         <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)', marginBottom: '8px', wordBreak: 'break-all' }}>
           ID: {currentUser.email}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #1a1724', paddingTop: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #1a1724', paddingTop: '8px', marginBottom: '10px' }}>
           <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>PERSONAL BEST</span>
           <span style={{ fontFamily: 'var(--font-arcade)', fontSize: '0.8rem', color: 'var(--color-yellow)', textShadow: '0 0 5px rgba(255,222,0,0.5)' }}>
             {currentUser.highScore} PTS
           </span>
         </div>
+        
+        {/* Delete Profile Control */}
+        <button 
+          onClick={handleDeleteProfile}
+          className="arcade-btn"
+          style={{ 
+            width: '100%', 
+            padding: '6px', 
+            fontSize: '0.55rem', 
+            borderColor: 'var(--color-red)', 
+            color: 'var(--color-red)', 
+            textShadow: '0 0 5px rgba(255,49,49,0.4)',
+            boxShadow: 'none'
+          }}
+        >
+          DELETE MY PROFILE
+        </button>
       </div>
 
       {/* Friends List */}

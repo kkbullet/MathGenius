@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { mockStorage } from './utils/mockStorage';
-import { supabase } from './utils/supabaseClient';
 import GameScreen from './components/GameScreen';
 import ScoreSummary from './components/ScoreSummary';
 import Dashboard from './components/Dashboard';
@@ -21,26 +20,16 @@ export default function App() {
   // Used to trigger list refetches in other components
   const [updateTrigger, setUpdateTrigger] = useState(0);
 
-  // Initialize storage and subscribe to auth state changes
+  // Initialize storage and check active session
   useEffect(() => {
     mockStorage.init();
 
-    // Check current session on mount
+    // Check current local storage session on mount
     async function checkUser() {
       const user = await mockStorage.getCurrentUser();
       setCurrentUser(user);
     }
     checkUser();
-
-    // Subscribe to Supabase auth state changes (crucial for email link sign-in)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session) {
-        const user = await mockStorage.getCurrentUser();
-        setCurrentUser(user);
-      } else {
-        setCurrentUser(null);
-      }
-    });
 
     // Parse URL query params for invitations: ?invite=USER_ID
     const params = new URLSearchParams(window.location.search);
@@ -48,10 +37,6 @@ export default function App() {
     if (inviteId) {
       localStorage.setItem('mma_pending_invite_id', inviteId);
     }
-
-    return () => {
-      subscription.unsubscribe();
-    };
   }, []);
 
   // Process any pending invite link once the user is authenticated
@@ -62,7 +47,7 @@ export default function App() {
         if (pendingInviteId) {
           const res = await mockStorage.processInviteLink(pendingInviteId);
           if (res.success) {
-            alert(`Friend request sent/connected with inviter!`);
+            alert(`Connected with inviter!`);
           }
           localStorage.removeItem('mma_pending_invite_id');
           // Clear invite query param from URL bar
@@ -85,14 +70,15 @@ export default function App() {
     e.preventDefault();
     if (!emailInput.trim()) return;
 
-    setLoginFeedback('SENDING MAGIC LINK...');
+    setLoginFeedback('AUTHENTICATING...');
 
     try {
-      const { error } = await mockStorage.login(emailInput, usernameInput);
+      const { user, error } = await mockStorage.login(emailInput, usernameInput);
       if (error) {
         setLoginFeedback(error.message.toUpperCase());
       } else {
-        setLoginFeedback('CHECK YOUR EMAIL FOR THE LOGIN LINK!');
+        setCurrentUser(user);
+        setLoginFeedback('');
         setEmailInput('');
         setUsernameInput('');
       }
@@ -132,11 +118,11 @@ export default function App() {
 
         <div className="arcade-panel magenta" style={{ width: '100%', maxWidth: '400px', textAlign: 'center' }}>
           <div className="panel-header" style={{ justifyContent: 'center', color: 'var(--color-cyan)', textShadow: 'var(--text-glow-cyan)' }}>
-            <span>INSERT COIN / AUTHENTICATE</span>
+            <span>INSERT COIN / SIGN IN</span>
           </div>
 
           <div style={{ color: 'var(--color-muted)', fontSize: '0.8rem', marginBottom: '24px', textTransform: 'uppercase' }}>
-            Enter your email to sign up or log in. No password required!
+            Enter your email to play. Login is instant with no password required!
           </div>
 
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -154,7 +140,7 @@ export default function App() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">PLAYER NAME / INITIALS (OPTIONAL)</label>
+              <label className="form-label">PLAYER INITIALS / NAME (OPTIONAL)</label>
               <input
                 type="text"
                 placeholder="e.g. PixelWizard"
@@ -167,17 +153,16 @@ export default function App() {
 
             {loginFeedback && (
               <div style={{ 
-                color: loginFeedback.includes('CHECK') ? 'var(--color-green)' : 'var(--color-red)', 
+                color: 'var(--color-red)', 
                 fontSize: '0.75rem', 
-                textTransform: 'uppercase',
-                textShadow: loginFeedback.includes('CHECK') ? '0 0 5px rgba(57,255,20,0.4)' : 'none'
+                textTransform: 'uppercase'
               }}>
                 {loginFeedback}
               </div>
             )}
 
             <button type="submit" className="arcade-btn cyan" style={{ marginTop: '10px' }}>
-              SEND LOGIN LINK
+              START GAME (PLAY NOW)
             </button>
           </form>
         </div>
