@@ -1,0 +1,512 @@
+:root {
+  --bg-dark: #0a090e;
+  --bg-cabinet: #15121e;
+  --bg-screen: #0c0b11;
+  --color-cyan: #00f3ff;
+  --color-magenta: #ff007f;
+  --color-yellow: #ffde00;
+  --color-green: #39ff14;
+  --color-red: #ff3131;
+  --color-text: #e0dced;
+  --color-muted: #8b85a3;
+  --border-glow-cyan: 0 0 10px rgba(0, 243, 255, 0.4), inset 0 0 10px rgba(0, 243, 255, 0.2);
+  --border-glow-magenta: 0 0 10px rgba(255, 0, 127, 0.4), inset 0 0 10px rgba(255, 0, 127, 0.2);
+  --text-glow-cyan: 0 0 8px rgba(0, 243, 255, 0.6);
+  --text-glow-magenta: 0 0 8px rgba(255, 0, 127, 0.6);
+  --text-glow-green: 0 0 8px rgba(57, 255, 20, 0.6);
+
+  --font-arcade: 'Press Start 2P', monospace;
+  --font-pixel: 'VT323', monospace;
+  --font-mono: 'Share Tech Mono', monospace;
+
+  font-size: 16px;
+  background-color: var(--bg-dark);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-dark);
+  background-image: 
+    linear-gradient(rgba(18, 16, 26, 0.8) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(18, 16, 26, 0.8) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* CRT Screen Effect overlay */
+.crt-overlay::before {
+  content: " ";
+  display: block;
+  position: fixed;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  z-index: 9999;
+  background-size: 100% 4px, 6px 100%;
+  pointer-events: none;
+}
+
+.crt-overlay::after {
+  content: " ";
+  display: block;
+  position: fixed;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: radial-gradient(circle, rgba(0,0,0,0) 60%, rgba(0,0,0,0.4) 100%);
+  z-index: 10000;
+  pointer-events: none;
+}
+
+/* App Containers */
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+header {
+  text-align: center;
+  padding: 12px 0 24px;
+}
+
+.game-title {
+  font-family: var(--font-arcade);
+  font-size: 2.2rem;
+  color: var(--color-cyan);
+  text-shadow: var(--text-glow-cyan);
+  margin: 0;
+  letter-spacing: -2px;
+  animation: flicker 4s infinite alternate;
+}
+
+.game-subtitle {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: var(--color-magenta);
+  text-shadow: var(--text-glow-magenta);
+  margin: 8px 0 0 0;
+  text-transform: uppercase;
+}
+
+/* Layout Split: Arcade Console (Main) + Dashboard Sidebar */
+.main-layout {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 24px;
+  margin-top: 8px;
+}
+
+@media (max-width: 950px) {
+  .main-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Panels styling */
+.arcade-panel {
+  background-color: var(--bg-cabinet);
+  border: 4px solid var(--color-magenta);
+  box-shadow: var(--border-glow-magenta), 0 8px 16px rgba(0, 0, 0, 0.6);
+  border-radius: 8px;
+  padding: 24px;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+
+.arcade-panel.cyan {
+  border-color: var(--color-cyan);
+  box-shadow: var(--border-glow-cyan), 0 8px 16px rgba(0, 0, 0, 0.6);
+}
+
+.arcade-panel.green {
+  border-color: var(--color-green);
+  box-shadow: 0 0 10px rgba(57, 255, 20, 0.4), inset 0 0 10px rgba(57, 255, 20, 0.2);
+}
+
+/* Screen bezel and inner display */
+.arcade-screen {
+  background-color: var(--bg-screen);
+  border: 6px solid #282436;
+  border-radius: 4px;
+  padding: 20px;
+  position: relative;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.9);
+}
+
+.arcade-screen::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%);
+  background-size: 100% 4px;
+  pointer-events: none;
+}
+
+/* Buttons and Controls */
+.arcade-btn {
+  font-family: var(--font-arcade);
+  font-size: 0.85rem;
+  padding: 14px 20px;
+  border: 2px solid var(--color-magenta);
+  background-color: transparent;
+  color: var(--color-magenta);
+  text-shadow: var(--text-glow-magenta);
+  cursor: pointer;
+  border-radius: 4px;
+  text-transform: uppercase;
+  transition: all 0.15s ease;
+  position: relative;
+  box-shadow: 0 4px 0 var(--bg-dark), var(--border-glow-magenta);
+  outline: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.arcade-btn:hover {
+  background-color: var(--color-magenta);
+  color: var(--bg-dark);
+  text-shadow: none;
+  box-shadow: 0 4px 0 var(--bg-dark), 0 0 15px rgba(255, 0, 127, 0.7);
+  transform: translateY(-2px);
+}
+
+.arcade-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 0px 0 var(--bg-dark), 0 0 5px rgba(255, 0, 127, 0.4);
+}
+
+.arcade-btn.cyan {
+  border-color: var(--color-cyan);
+  color: var(--color-cyan);
+  text-shadow: var(--text-glow-cyan);
+  box-shadow: 0 4px 0 var(--bg-dark), var(--border-glow-cyan);
+}
+
+.arcade-btn.cyan:hover {
+  background-color: var(--color-cyan);
+  color: var(--bg-dark);
+  text-shadow: none;
+  box-shadow: 0 4px 0 var(--bg-dark), 0 0 15px rgba(0, 243, 255, 0.7);
+}
+
+.arcade-btn.cyan:active {
+  box-shadow: 0 0px 0 var(--bg-dark), 0 0 5px rgba(0, 243, 255, 0.4);
+}
+
+.arcade-btn.green {
+  border-color: var(--color-green);
+  color: var(--color-green);
+  text-shadow: var(--text-glow-green);
+  box-shadow: 0 4px 0 var(--bg-dark), 0 0 10px rgba(57, 255, 20, 0.4);
+}
+
+.arcade-btn.green:hover {
+  background-color: var(--color-green);
+  color: var(--bg-dark);
+  text-shadow: none;
+  box-shadow: 0 4px 0 var(--bg-dark), 0 0 15px rgba(57, 255, 20, 0.7);
+}
+
+.arcade-btn.green:active {
+  box-shadow: 0 0px 0 var(--bg-dark), 0 0 5px rgba(57, 255, 20, 0.4);
+}
+
+.arcade-btn.yellow {
+  border-color: var(--color-yellow);
+  color: var(--color-yellow);
+  text-shadow: 0 0 8px rgba(255, 222, 0, 0.6);
+  box-shadow: 0 4px 0 var(--bg-dark), 0 0 10px rgba(255, 222, 0, 0.4);
+}
+
+.arcade-btn.yellow:hover {
+  background-color: var(--color-yellow);
+  color: var(--bg-dark);
+  text-shadow: none;
+  box-shadow: 0 4px 0 var(--bg-dark), 0 0 15px rgba(255, 222, 0, 0.7);
+}
+
+.arcade-btn.yellow:active {
+  box-shadow: 0 0px 0 var(--bg-dark), 0 0 5px rgba(255, 222, 0, 0.4);
+}
+
+/* Custom Numeric Input Box */
+.arcade-input {
+  background-color: #050406;
+  border: 3px solid var(--color-cyan);
+  box-shadow: var(--border-glow-cyan);
+  border-radius: 4px;
+  color: var(--color-cyan);
+  font-family: var(--font-arcade);
+  font-size: 2rem;
+  padding: 12px;
+  text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+  caret-color: var(--color-magenta);
+}
+
+.arcade-input:focus {
+  border-color: var(--color-magenta);
+  box-shadow: var(--border-glow-magenta);
+  color: var(--color-magenta);
+}
+
+/* Timer and Stats LCD display */
+.lcd-display {
+  display: flex;
+  justify-content: space-between;
+  background-color: #030304;
+  border: 2px solid #201b2b;
+  border-radius: 4px;
+  padding: 8px 16px;
+  margin-bottom: 20px;
+}
+
+.lcd-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.lcd-label {
+  font-family: var(--font-arcade);
+  font-size: 0.55rem;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.lcd-val {
+  font-family: var(--font-mono);
+  font-size: 1.8rem;
+  font-weight: bold;
+}
+
+.lcd-val.cyan { color: var(--color-cyan); text-shadow: var(--text-glow-cyan); }
+.lcd-val.magenta { color: var(--color-magenta); text-shadow: var(--text-glow-magenta); }
+.lcd-val.yellow { color: var(--color-yellow); text-shadow: 0 0 8px rgba(255, 222, 0, 0.6); }
+
+/* Retro Header styles */
+.panel-header {
+  font-family: var(--font-arcade);
+  font-size: 0.9rem;
+  color: var(--color-yellow);
+  text-shadow: 0 0 6px rgba(255, 222, 0, 0.5);
+  margin-top: 0;
+  margin-bottom: 18px;
+  text-transform: uppercase;
+  border-bottom: 2px dashed #302a42;
+  padding-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Tabs Toggle */
+.tab-header {
+  display: flex;
+  border-bottom: 2px solid #302a42;
+  margin-bottom: 16px;
+  gap: 4px;
+}
+
+.tab-btn {
+  font-family: var(--font-arcade);
+  font-size: 0.6rem;
+  background: transparent;
+  border: 2px solid transparent;
+  border-bottom: none;
+  padding: 8px 12px;
+  color: var(--color-muted);
+  cursor: pointer;
+  outline: none;
+  text-transform: uppercase;
+}
+
+.tab-btn.active {
+  border-color: var(--color-cyan);
+  border-bottom: 2px solid var(--bg-cabinet);
+  color: var(--color-cyan);
+  text-shadow: var(--text-glow-cyan);
+  margin-bottom: -2px;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+}
+
+/* Retro List / Leaderboard */
+.arcade-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.arcade-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 8px;
+  border-bottom: 1px solid #201c2d;
+  font-size: 0.95rem;
+}
+
+.arcade-list-item:nth-child(odd) {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.arcade-list-item.highlight {
+  border-left: 3px solid var(--color-yellow);
+  padding-left: 5px;
+  background-color: rgba(255, 222, 0, 0.05);
+}
+
+.rank-badge {
+  font-family: var(--font-arcade);
+  font-size: 0.7rem;
+  margin-right: 8px;
+  color: var(--color-muted);
+}
+
+.rank-1 .rank-badge { color: var(--color-yellow); text-shadow: 0 0 5px rgba(255, 222, 0, 0.7); }
+.rank-2 .rank-badge { color: #c0c0c0; text-shadow: 0 0 5px rgba(192, 192, 192, 0.7); }
+.rank-3 .rank-badge { color: #cd7f32; text-shadow: 0 0 5px rgba(205, 127, 50, 0.7); }
+
+/* Animation FXs */
+@keyframes flicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+    text-shadow: var(--text-glow-cyan);
+  }
+  20%, 24%, 55% {
+    text-shadow: none;
+    color: #0b5a63;
+  }
+}
+
+.shake {
+  animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both;
+  transform: translate3d(0, 0, 0);
+}
+
+@keyframes shake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(2px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+  40%, 60% { transform: translate3d(4px, 0, 0); }
+}
+
+.success-flash {
+  animation: success-flash-kf 0.25s ease-out;
+}
+
+@keyframes success-flash-kf {
+  0% { background-color: rgba(57, 255, 20, 0.2); }
+  100% { background-color: transparent; }
+}
+
+/* Floating scores animation */
+.floating-score {
+  position: absolute;
+  font-family: var(--font-arcade);
+  font-size: 1.2rem;
+  color: var(--color-green);
+  text-shadow: var(--text-glow-green);
+  pointer-events: none;
+  animation: floatUp 0.8s ease-out forwards;
+}
+
+@keyframes floatUp {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(-40px) scale(0.7); opacity: 0; }
+}
+
+/* Custom Scrollbars */
+.arcade-list::-webkit-scrollbar {
+  width: 8px;
+}
+.arcade-list::-webkit-scrollbar-track {
+  background: var(--bg-screen);
+}
+.arcade-list::-webkit-scrollbar-thumb {
+  background: #3e3852;
+  border-radius: 4px;
+}
+.arcade-list::-webkit-scrollbar-thumb:hover {
+  background: var(--color-magenta);
+}
+
+/* Utility Forms styles */
+.form-group {
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.form-label {
+  font-family: var(--font-arcade);
+  font-size: 0.55rem;
+  color: var(--color-muted);
+  text-transform: uppercase;
+}
+
+.form-input {
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid #3d3752;
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  outline: none;
+}
+
+.form-input:focus {
+  border-color: var(--color-cyan);
+  box-shadow: 0 0 5px rgba(0, 243, 255, 0.3);
+}
+
+/* Modal styles for Invites / Notifications */
+.badge-count {
+  background-color: var(--color-magenta);
+  color: #fff;
+  border-radius: 50%;
+  padding: 2px 6px;
+  font-size: 0.6rem;
+  font-family: var(--font-arcade);
+}
+
+.social-notification {
+  border: 1px dashed var(--color-yellow);
+  padding: 8px;
+  margin-bottom: 12px;
+  border-radius: 4px;
+  background-color: rgba(255, 222, 0, 0.03);
+}
+
+/* Continuous Game container adjustments */
+.keyboard-help {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  margin-top: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
