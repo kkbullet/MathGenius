@@ -153,14 +153,6 @@ export default function Dashboard({ currentUser, onLogout, onActionCompleted }) 
           </div>
         )}
       </div>
-
-      {/* Database Multi-browser Testing Tips */}
-      <div style={{ marginTop: '20px', borderTop: '1px solid #201c2d', paddingTop: '12px', fontSize: '0.7rem', color: 'var(--color-muted)', textAlign: 'center', textTransform: 'uppercase' }}>
-        <div>🧪 To test live invite sync:</div>
-        <div style={{ marginTop: '4px' }}>
-          Open an <span style={{ color: 'var(--color-cyan)' }}>Incognito window</span> or different browser & log in with a second email!
-        </div>
-      </div>
     </div>
   );
 }
