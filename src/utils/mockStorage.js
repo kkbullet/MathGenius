@@ -218,32 +218,72 @@ export const mockStorage = {
     return { inbound, outbound };
   },
 
-  async sendInviteByEmail(recipientEmail) {
+  async sendInviteByEmail(inputVal) {
     const user = await this.getCurrentUser();
     if (!user) return { success: false, message: 'Please sign in first' };
 
-    const email = recipientEmail.trim().toLowerCase();
-    if (email === user.email.toLowerCase()) {
-      return { success: false, message: 'You cannot invite yourself' };
+    const input = inputVal.trim();
+    if (!input) return { success: false, message: 'Input cannot be empty' };
+
+    const isEmail = input.includes('@');
+
+    if (isEmail) {
+      const email = input.toLowerCase();
+      if (email === user.email.toLowerCase()) {
+        return { success: false, message: 'You cannot invite yourself' };
+      }
+
+      // Query profiles for matching email
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email);
+
+      if (profiles && profiles.length > 0) {
+        const recipientId = profiles[0].id;
+        await this.createFriendshipRow(user.id, recipientId);
+      }
+
+      // Return the generic message (protects PII / matches custom user specification)
+      return { 
+        success: true, 
+        message: 'If the email you entered exists in our system, they will receive a friend invite.' 
+      };
+    } else {
+      // Username lookup (case-sensitive)
+      if (input === user.username) {
+        return { success: false, message: 'You cannot invite yourself' };
+      }
+
+      const { data: profiles, error: queryError } = await supabase
+        .from('profiles')
+        .select('id, username')
+        .eq('username', input); // exact case-sensitive match
+
+      if (queryError || !profiles || profiles.length === 0) {
+        return { success: false, message: "User doesn't exist" };
+      }
+
+      const recipient = profiles[0];
+      const sendRes = await this.createFriendshipRow(user.id, recipient.id);
+      if (!sendRes.success) {
+        return { success: false, message: sendRes.message };
+      }
+
+      return { 
+        success: true, 
+        message: `A friend invite has been sent to ${recipient.username}` 
+      };
     }
-    
-    // Resolve email directly in public profiles table
-    const { data: profiles, error: queryError } = await supabase
-      .from('profiles')
-      .select('id, username')
-      .eq('email', email);
+  },
 
-    if (queryError || !profiles || profiles.length === 0) {
-      return { success: false, message: 'Player email not registered yet' };
-    }
-
-    const recipient = profiles[0];
-
-    // Check if connection already exists
+  // Helper method to insert friendship row securely
+  async createFriendshipRow(senderId, recipientId) {
+    // Check if friendship already exists
     const { data: existing } = await supabase
       .from('friendships')
       .select('*')
-      .or(`and(sender_id.eq.${user.id},recipient_id.eq.${recipient.id}),and(sender_id.eq.${recipient.id},recipient_id.eq.${user.id})`);
+      .or(`and(sender_id.eq.${senderId},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${senderId})`);
 
     if (existing && existing.length > 0) {
       if (existing[0].status === 'accepted') {
@@ -252,20 +292,19 @@ export const mockStorage = {
       return { success: false, message: 'Friend request is already pending' };
     }
 
-    // Send the friendship invite
-    const { error: insertError } = await supabase
+    // Insert new friendship request
+    const { error } = await supabase
       .from('friendships')
       .insert({
-        sender_id: user.id,
-        recipient_id: recipient.id,
+        sender_id: senderId,
+        recipient_id: recipientId,
         status: 'pending'
       });
 
-    if (insertError) {
-      return { success: false, message: 'Failed to send invite' };
+    if (error) {
+      return { success: false, message: 'Failed to connect' };
     }
-
-    return { success: true, message: 'Friend invitation sent successfully!' };
+    return { success: true };
   },
 
   async acceptInvite(inviteId) {

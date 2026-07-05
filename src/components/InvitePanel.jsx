@@ -109,13 +109,16 @@ export default function InvitePanel({ currentUser, onActionCompleted }) {
         </span>
       </div>
 
-      {/* Invite by Email */}
+      {/* Invite by Email or Username */}
       <form onSubmit={handleSendInvite} className="form-group" style={{ marginBottom: '20px' }}>
-        <label className="form-label">INVITE BY EMAIL</label>
+        <label className="form-label">ADD FRIENDS BY EMAIL OR USERNAME</label>
+        <span style={{ fontSize: '0.65rem', color: 'var(--color-muted)', marginTop: '-4px', marginBottom: '2px' }}>
+          Note: Usernames are case-sensitive.
+        </span>
         <div style={{ display: 'flex', gap: '8px' }}>
           <input 
-            type="email" 
-            placeholder="friend@email.com" 
+            type="text" 
+            placeholder="friend@email.com or Username" 
             required
             value={emailInput}
             onChange={(e) => setEmailInput(e.target.value)}
